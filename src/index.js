@@ -296,31 +296,6 @@ fastify.get('/*', async (request, reply) => {
         const reader = aiStream.getReader();
         const decoder = new TextDecoder();
 
-        try {
-            while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-
-                const chunk = decoder.decode(value, { stream: true });
-                // The AI response is NDJSON (lines of JSON)
-                // We need to buffer lines to parse JSON?
-                // The Rust code parsed NDJSON.
-                // `while let Ok(Some(line)) = lines.next_line().await`
-
-                // Wait, `streamPage` returns `response.body`.
-                // The AI returns a stream of chunks.
-                // The Rust code treated it as NDJSON.
-                // We need to handle splitting by newline if chunks contain multiple lines or partial lines.
-
-                processChunk(chunk);
-            }
-        } catch (e) {
-            request.log.error(e);
-        } finally {
-            responseStream.push(null); // End response
-            fileStream.end();
-        }
-
         // Buffer for NDJSON processing
         let buffer = "";
 
@@ -353,6 +328,31 @@ fastify.get('/*', async (request, reply) => {
                     // ignore parse errors (e.g. partial lines if logic wrong, but here we split by \n)
                 }
             }
+        }
+
+        try {
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                const chunk = decoder.decode(value, { stream: true });
+                // The AI response is NDJSON (lines of JSON)
+                // We need to buffer lines to parse JSON?
+                // The Rust code parsed NDJSON.
+                // `while let Ok(Some(line)) = lines.next_line().await`
+
+                // Wait, `streamPage` returns `response.body`.
+                // The AI returns a stream of chunks.
+                // The Rust code treated it as NDJSON.
+                // We need to handle splitting by newline if chunks contain multiple lines or partial lines.
+
+                processChunk(chunk);
+            }
+        } catch (e) {
+            request.log.error(e);
+        } finally {
+            responseStream.push(null); // End response
+            fileStream.end();
         }
 
     } catch (err) {
