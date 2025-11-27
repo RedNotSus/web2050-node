@@ -181,13 +181,26 @@ fastify.get('/*', async (request, reply) => {
         return reply.code(400).send('Bad Request');
     }
 
+    // Check if exactly this file exists in INTERNET_DIR
+    // If it exists as a file, we serve it directly.
+    let exactPath = path.join(INTERNET_DIR, urlPath);
+    let exactStat = null;
+    try {
+        exactStat = await fs.stat(exactPath);
+    } catch (e) {}
+
     // Default to index.html if directory or no extension
     // Logic from Rust:
     // (1, _) | (_, None) => (url.join("index.html"), "html")
     const parts = urlPath.split('/').filter(p => p.length > 0);
     const hasExtension = path.extname(urlPath).length > 0;
 
-    if (parts.length === 1 && !hasExtension) {
+    if (exactStat && exactStat.isFile()) {
+        // Serve exact file
+    } else if (parts.length === 1) {
+         // It is a domain root (or a file that doesn't exist yet).
+         // We default to treating it as a directory with index.html
+         // This fixes the issue where domains were created as files.
          urlPath = path.join(urlPath, 'index.html');
     } else if (!hasExtension) {
          urlPath = path.join(urlPath, 'index.html');
@@ -225,11 +238,11 @@ fastify.get('/*', async (request, reply) => {
         return reply.type(contentType).send(stream);
 
     } catch (err) {
-        if (err.code !== 'ENOENT') {
+        if (err.code !== 'ENOENT' && err.code !== 'ENOTDIR') {
             request.log.error(err);
             return reply.code(500).send('Internal Server Error');
         }
-        // File does not exist, Generate it!
+        // File does not exist (or parent is file), Generate it!
     }
 
     // Locking
@@ -259,7 +272,35 @@ fastify.get('/*', async (request, reply) => {
         const fsDomain = path.join(INTERNET_DIR, key);
         const parentFsPath = path.dirname(fsPath);
 
-        await fs.mkdir(parentFsPath, { recursive: true });
+        try {
+            await fs.mkdir(parentFsPath, { recursive: true });
+        } catch (e) {
+            // Handle collision where a file exists where we want a directory
+            if (e.code === 'EEXIST' || e.code === 'ENOTDIR') {
+                // Check if the domain itself is a file
+                try {
+                    const stat = await fs.stat(fsDomain);
+                    if (stat.isFile()) {
+                        // Migration: Move existing domain file to domain/index.html
+                        const tempPath = fsDomain + '.tmp';
+                        await fs.rename(fsDomain, tempPath);
+                        await fs.mkdir(fsDomain);
+                        await fs.rename(tempPath, path.join(fsDomain, 'index.html'));
+
+                        // Retry mkdir for the specific path we need
+                        await fs.mkdir(parentFsPath, { recursive: true });
+                    } else {
+                        throw e;
+                    }
+                } catch (inner) {
+                     // If still failing, throw original
+                     request.log.error(inner);
+                     throw e;
+                }
+            } else {
+                throw e;
+            }
+        }
 
         // Fetch context assets
         let assets;
