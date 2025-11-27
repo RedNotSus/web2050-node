@@ -38,9 +38,13 @@ Create a `.env` file in the root directory if it doesn't exist:
 
 ```env
 HOST=0.0.0.0:8000
+API_KEY=your_api_key_here
+MODEL=qwen/qwen3-32b
 ```
 
 - `HOST`: The address and port to bind the server to (format: `IP:PORT` or just `IP` to use default port 3000).
+- `API_KEY`: Your API key for the AI service.
+- `MODEL`: The model ID to use (e.g., `qwen/qwen3-32b`).
 
 ### Running the Server
 

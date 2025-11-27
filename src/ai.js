@@ -149,7 +149,7 @@ Moby takes ethics and safety first, Moby checks over the following before produc
 
 Moby is now being connected to a client.`;
 
-const COMPLETIONS_URL = "https://ai.hackclub.com/chat/completions";
+const COMPLETIONS_URL = "https://ai.hackclub.com/proxy/v1/chat/completions";
 
 export async function streamPage(urlPath, assets) {
   const date = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
@@ -157,6 +157,7 @@ export async function streamPage(urlPath, assets) {
   const userPrompt = `URL to create: ${urlPath}\nAsset files in the same domain:\n${assets.toString()}`;
 
   const requestPayload = {
+    model: process.env.MODEL,
     messages: [
       { role: "system", content: systemPrompt },
       { role: "user", content: userPrompt }
@@ -168,7 +169,8 @@ export async function streamPage(urlPath, assets) {
   const response = await fetch(COMPLETIONS_URL, {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json'
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${process.env.API_KEY}`
     },
     body: JSON.stringify(requestPayload)
   });
