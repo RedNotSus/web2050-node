@@ -162,7 +162,8 @@ export async function streamPage(urlPath, assets) {
       { role: "system", content: systemPrompt },
       { role: "user", content: userPrompt }
     ],
-    stream: true
+    stream: true,
+    include_reasoning: false
   };
 
   const response = await fetch(COMPLETIONS_URL, {
