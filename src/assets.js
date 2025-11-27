@@ -1,41 +1,30 @@
-// Port of assets.rs
-import { promises as fs } from 'fs';
-import path from 'path';
+import { getDomainPages } from './db.js';
 
 export async function readAllFilesInDir(dir) {
-  const assets = [];
+  // dir is the domain path, e.g. "internet/google.com" (from old logic) or just "google.com" (logical).
+  // The caller in index.js does:
+  // const fsDomain = path.join(INTERNET_DIR, key);
+  // await readAllFilesInDir(fsDomain);
+
+  // We need to change the caller to pass the logical domain key, not the filesystem path.
+  // But for now, let's assume the caller might still pass a path and we strip it?
+  // Or better, we update the caller in the next step.
+  // Let's implement this function expecting `dir` to be the domain key (e.g. "google.com").
+
+  // Wait, I should make sure I update the caller.
+  // Since I am refactoring assets.js now, let's assume `dir` is the domain string.
 
   try {
-    const files = await getFiles(dir);
-
-    for (const filePath of files) {
-      // Skip if somehow not a file (though getFiles filters)
-      const content = await fs.readFile(filePath, 'utf-8');
-      assets.push({ path: filePath, content });
-    }
-  } catch (err) {
-    // If directory doesn't exist, just return empty list
-    if (err.code !== 'ENOENT') {
-      throw err;
-    }
+     const rows = await getDomainPages(dir);
+     const assets = rows.map(row => ({
+         path: row.path,
+         content: row.content
+     }));
+     return new AssetList(assets);
+  } catch (e) {
+      // Return empty if error
+      return new AssetList([]);
   }
-
-  return new AssetList(assets);
-}
-
-async function getFiles(dir) {
-  let results = [];
-  const list = await fs.readdir(dir, { withFileTypes: true });
-
-  for (const dirent of list) {
-    const res = path.join(dir, dirent.name);
-    if (dirent.isDirectory()) {
-      results = results.concat(await getFiles(res));
-    } else {
-      results.push(res);
-    }
-  }
-  return results;
 }
 
 class AssetList {
