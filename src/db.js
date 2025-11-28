@@ -23,18 +23,23 @@ export function initDB(config = {}) {
 }
 
 export async function setup() {
-  if (!pool) initDB();
-  const client = await pool.connect();
   try {
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS pages (
-        path TEXT PRIMARY KEY,
-        content TEXT NOT NULL,
-        created_at TIMESTAMP DEFAULT NOW()
-      );
-    `);
-  } finally {
-    client.release();
+    if (!pool) initDB();
+    const client = await pool.connect();
+    try {
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS pages (
+          path TEXT PRIMARY KEY,
+          content TEXT NOT NULL,
+          created_at TIMESTAMP DEFAULT NOW()
+        );
+      `);
+    } finally {
+      client.release();
+    }
+  } catch (err) {
+    console.error('Failed to connect to database or create tables:', err.message);
+    throw new Error('Database initialization failed. Please check your PostgreSQL connection settings.');
   }
 }
 
