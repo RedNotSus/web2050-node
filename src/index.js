@@ -34,8 +34,8 @@ const generationMap = new Map();
 // Reset Endpoint
 fastify.post('/reset', async (request, reply) => {
     const { path: rawPath } = request.body || {};
-    if (!rawPath) {
-        return reply.code(400).send({ error: "Missing 'path' in body" });
+    if (!rawPath || typeof rawPath !== 'string' || rawPath.trim().length === 0) {
+        return reply.code(400).send({ error: "Invalid 'path' in body" });
     }
 
     // Normalize path logic
