@@ -79,10 +79,11 @@ export async function searchPages(query) {
   const sql = `
     SELECT path, content
     FROM pages
-    WHERE path ILIKE $1 OR content ILIKE $1
+    WHERE path ILIKE $1 ESCAPE '\\' OR content ILIKE $1 ESCAPE '\\'
     ORDER BY created_at DESC
   `;
-  const wild = `%${query}%`;
+  const escapedQuery = query.replace(/[%_\\]/g, '\\$&');
+  const wild = `%${escapedQuery}%`;
   const res = await pool.query(sql, [wild]);
   return res.rows;
 }
