@@ -42,18 +42,16 @@ HOST=0.0.0.0:8000
 API_KEY=your_api_key_here
 MODEL=qwen/qwen3-32b
 
-# Database Configuration (Standard libpq env vars)
-PGHOST=localhost
-PGUSER=postgres
-PGDATABASE=web2050
-PGPASSWORD=password
-PGPORT=5432
+# Database Configuration
+# Primary method: Use a connection string
+DATABASE_URL=postgresql://postgres:password@localhost:5432/web2050
 ```
 
 - `HOST`: The address and port to bind the server to (format: `IP:PORT` or just `IP` to use default port 3000).
 - `API_KEY`: Your API key for the AI service.
 - `MODEL`: The model ID to use (e.g., `qwen/qwen3-32b`).
-- `PG*`: Standard PostgreSQL connection parameters. Alternatively, `DATABASE_URL` can be used.
+- `DATABASE_URL`: The PostgreSQL connection string.
+  - Alternatively, you can use standard `libpq` environment variables (`PGHOST`, `PGUSER`, `PGDATABASE`, `PGPASSWORD`, `PGPORT`).
 
 ### Running the Server
 

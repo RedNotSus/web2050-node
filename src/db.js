@@ -2,21 +2,23 @@ import pg from 'pg';
 
 const { Pool } = pg;
 
-// Default config uses env vars: PGHOST, PGUSER, PGDATABASE, PGPASSWORD, PGPORT
-// or DATABASE_URL
 let pool;
 
 export function initDB(config = {}) {
-  // If config is provided (e.g. for testing with pg-mem), use it.
-  // Otherwise default to standard env vars.
   if (config.pool) {
       pool = config.pool;
   } else {
-      pool = new Pool({
+      const poolConfig = {
         max: 20,
         idleTimeoutMillis: 30000,
         connectionTimeoutMillis: 2000,
-      });
+      };
+
+      if (process.env.DATABASE_URL) {
+          poolConfig.connectionString = process.env.DATABASE_URL;
+      }
+
+      pool = new Pool(poolConfig);
   }
 }
 
@@ -69,7 +71,6 @@ export async function searchPages(query) {
       return res.rows.map(r => r.path);
   }
 
-  // Simple ILIKE search
   const sql = `
     SELECT path, content
     FROM pages
@@ -83,14 +84,6 @@ export async function searchPages(query) {
 
 export async function getDomainPages(domainPrefix) {
     if (!pool) initDB();
-    // Assuming domainPrefix is like "example.com"
-    // We want "example.com/%" (anything inside) OR "example.com" (the root file if normalized)
-    // But since we normalize "example.com" -> "example.com/index.html", checking prefix "example.com/" is safer
-    // to avoid "example.comedy/..." matching "example.com"
-
-    // However, user might pass "google.com".
-    // We should search for path LIKE 'google.com/%'
-
     const sql = `SELECT path, content FROM pages WHERE path LIKE $1`;
     const wild = `${domainPrefix}/%`;
     const res = await pool.query(sql, [wild]);

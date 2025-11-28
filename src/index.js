@@ -16,7 +16,6 @@ dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const ROOT_DIR = path.resolve(__dirname, '..');
-// INTERNET_DIR is no longer used for storage
 
 const fastify = Fastify({
   logger: true,
@@ -39,25 +38,17 @@ fastify.post('/reset', async (request, reply) => {
         return reply.code(400).send({ error: "Missing 'path' in body" });
     }
 
-    // Normalize path logic (same as in serve)
+    // Normalize path logic
     let urlPath = rawPath;
     if (urlPath.startsWith('/')) urlPath = urlPath.slice(1);
 
-    // We try to guess normalization to match what was saved.
-    // If user passes "google.com", we saved "google.com/index.html".
-    // If user passes "google.com/index.html", we saved "google.com/index.html".
-
-    // Let's just try to delete exactly what is passed first?
-    // Or apply the same normalization.
     const parts = urlPath.split('/').filter(p => p.length > 0);
     const hasExtension = path.extname(urlPath).length > 0;
 
     let targetPath = urlPath;
     if (parts.length === 1 || !hasExtension) {
          if (!urlPath.endsWith('.html')) {
-             // Avoid double .html if user typed google.com/index
              if (!urlPath.endsWith('index.html')) {
-                // If it ends in slash or just domain
                 targetPath = path.join(urlPath, 'index.html');
              }
          }
@@ -281,6 +272,7 @@ fastify.get('/*', async (request, reply) => {
 
         // Accumulate content for DB
         let fullContent = "";
+        let hasError = false;
 
         const reader = aiStream.getReader();
         const decoder = new TextDecoder();
@@ -322,12 +314,13 @@ fastify.get('/*', async (request, reply) => {
                 processChunk(chunk);
             }
         } catch (e) {
+            hasError = true;
             request.log.error(e);
         } finally {
             responseStream.push(null);
 
-            // Save to DB
-            if (fullContent.length > 0) {
+            // Save to DB only if successful
+            if (!hasError && fullContent.length > 0) {
                 try {
                     await savePage(urlPath, fullContent);
                 } catch (saveErr) {
