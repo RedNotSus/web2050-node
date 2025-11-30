@@ -4,6 +4,7 @@ import mime from 'mime-types';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { Readable } from 'stream';
+import fs from 'fs';
 
 import { streamPage } from './ai.js';
 import { readAllFilesInDir } from './assets.js';
@@ -16,6 +17,7 @@ dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const ROOT_DIR = path.resolve(__dirname, '..');
+const INTERNET_DIR = path.join(ROOT_DIR, 'internet');
 
 const fastify = Fastify({
   logger: true,
@@ -183,6 +185,21 @@ color: var(--color-gray-100);
 fastify.get('/*', async (request, reply) => {
     let urlPath = request.params['*'];
     if (!urlPath) return reply.code(404).send('Not Found');
+
+    // Static file serving from internet/ directory
+    try {
+        const potentialFile = path.join(INTERNET_DIR, urlPath);
+        // Prevent directory traversal
+        if (potentialFile.startsWith(INTERNET_DIR + path.sep)) {
+            const stats = await fs.promises.stat(potentialFile);
+            if (stats.isFile()) {
+                const contentType = mime.lookup(potentialFile) || 'application/octet-stream';
+                return reply.type(contentType).send(fs.createReadStream(potentialFile));
+            }
+        }
+    } catch (e) {
+        // Ignore errors, proceed to DB/AI
+    }
 
     if (path.extname(urlPath) === '.map') {
         return reply.code(400).send('Bad Request');
