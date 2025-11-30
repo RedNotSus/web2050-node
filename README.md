@@ -22,6 +22,7 @@ Demo available [here](https://ai.dino.icu)
 
 - **Node.js** (v18 or higher recommended)
 - **pnpm** (Package manager)
+- **PostgreSQL** (Database)
 
 ### Installation
 
@@ -40,11 +41,17 @@ Create a `.env` file in the root directory if it doesn't exist:
 HOST=0.0.0.0:8000
 API_KEY=your_api_key_here
 MODEL=qwen/qwen3-32b
+
+# Database Configuration
+# Primary method: Use a connection string
+DATABASE_URL=postgresql://postgres:password@localhost:5432/web2050
 ```
 
 - `HOST`: The address and port to bind the server to (format: `IP:PORT` or just `IP` to use default port 3000).
 - `API_KEY`: Your API key for the AI service.
 - `MODEL`: The model ID to use (e.g., `qwen/qwen3-32b`).
+- `DATABASE_URL`: The PostgreSQL connection string.
+  - Alternatively, you can use standard `libpq` environment variables (`PGHOST`, `PGUSER`, `PGDATABASE`, `PGPASSWORD`, `PGPORT`).
 
 ### Running the Server
 
@@ -61,5 +68,20 @@ The server will be available at the address specified in `HOST` (e.g., `http://l
 1. Open your browser and navigate to the server URL.
 2. To generate a page, append the desired domain and path to the URL.
    - Example: `http://localhost:8000/google.com/index.html`
-3. The server will stream the generated content and save it to the `internet/` directory for future requests.
+3. The server will stream the generated content and save it to the database for future requests.
 4. You can search locally generated pages using the search bar on the home page.
+
+### API
+
+#### Reset Page
+
+To delete a generated page (so it can be regenerated on the next visit), send a POST request:
+
+**Endpoint:** `POST /reset`
+
+**Body:**
+```json
+{
+  "path": "google.com/index.html"
+}
+```

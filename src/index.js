@@ -1,24 +1,21 @@
 import Fastify from 'fastify';
 import path from 'path';
-import { promises as fs } from 'fs';
-import { createWriteStream, createReadStream } from 'fs';
-import { pipeline } from 'stream/promises';
-import { Readable } from 'stream';
 import mime from 'mime-types';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
+import { Readable } from 'stream';
 
 import { streamPage } from './ai.js';
 import { readAllFilesInDir } from './assets.js';
 import { StreamingParser } from './streaming_parser.js';
 import { searchFiles } from './search.js';
+import { setup, getPage, savePage, deletePage } from './db.js';
 
 dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const ROOT_DIR = path.resolve(__dirname, '..');
-const INTERNET_DIR = path.join(ROOT_DIR, 'internet');
 
 const fastify = Fastify({
   logger: true,
@@ -34,12 +31,33 @@ fastify.addHook('onRequest', async (request, reply) => {
 // Generation Map: URL (string) -> Promise
 const generationMap = new Map();
 
-// Helper to split stream
-// In Node web streams (returned by fetch) are not easily T-split without reading.
-// We will read the source stream, parse it, and push to two destinations:
-// 1. The HTTP response stream
-// 2. The File write stream
-// The StreamingParser needs to process the chunks first.
+// Reset Endpoint
+fastify.post('/reset', async (request, reply) => {
+    const { path: rawPath } = request.body || {};
+    if (!rawPath || typeof rawPath !== 'string' || rawPath.trim().length === 0) {
+        return reply.code(400).send({ error: "Invalid 'path' in body" });
+    }
+
+    // Normalize path logic
+    let urlPath = rawPath;
+    if (urlPath.startsWith('/')) urlPath = urlPath.slice(1);
+
+    const parts = urlPath.split('/').filter(p => p.length > 0);
+    const hasExtension = path.extname(urlPath).length > 0;
+
+    let targetPath = urlPath;
+    if (parts.length === 1 || !hasExtension) {
+         if (!urlPath.endsWith('.html')) {
+             if (!urlPath.endsWith('index.html')) {
+                targetPath = path.join(urlPath, 'index.html');
+             }
+         }
+    }
+
+    await deletePage(targetPath);
+    return { success: true, deleted: targetPath };
+});
+
 
 // Index Route
 fastify.get('/', async (request, reply) => {
@@ -51,7 +69,6 @@ fastify.get('/', async (request, reply) => {
      results = await searchFiles(q);
   } catch (e) {
       fastify.log.error(e);
-      // fallback to empty
   }
 
   // HTML Construction
@@ -163,51 +180,35 @@ color: var(--color-gray-100);
     reply.type('text/html').send(html);
 });
 
-// Serve static files from INTERNET_DIR if they exist, to handle successful generations later
-// We use a wildcard route instead of fastify-static for the main logic because we need to intercept
-// for generation if not found.
-// Actually, fastify-static is good for serving already existing files, but we need to control the fallback.
-// So we will implement custom logic.
-
 fastify.get('/*', async (request, reply) => {
     let urlPath = request.params['*'];
     if (!urlPath) return reply.code(404).send('Not Found');
 
-    // Remove leading slash if present (Fastify params usually don't have it)
-    // urlPath = urlPath.replace(/^\//, '');
-
-    // Check for "map" extension (from original code)
     if (path.extname(urlPath) === '.map') {
         return reply.code(400).send('Bad Request');
     }
 
-    // Check if exactly this file exists in INTERNET_DIR
-    // If it exists as a file, we serve it directly.
-    let exactPath = path.join(INTERNET_DIR, urlPath);
-    let exactStat = null;
-    try {
-        exactStat = await fs.stat(exactPath);
-    } catch (e) {}
-
-    // Default to index.html if directory or no extension
-    // Logic from Rust:
-    // (1, _) | (_, None) => (url.join("index.html"), "html")
+    // Normalization logic
     const parts = urlPath.split('/').filter(p => p.length > 0);
     const hasExtension = path.extname(urlPath).length > 0;
 
-    if (exactStat && exactStat.isFile()) {
-        // Serve exact file
-    } else if (parts.length === 1) {
-         // It is a domain root (or a file that doesn't exist yet).
-         // We default to treating it as a directory with index.html
-         // This fixes the issue where domains were created as files.
-         urlPath = path.join(urlPath, 'index.html');
-    } else if (!hasExtension) {
-         urlPath = path.join(urlPath, 'index.html');
+    // First, check if exact match exists in DB (e.g. style.css)
+    let page = await getPage(urlPath);
+
+    if (!page) {
+        // Apply default logic
+        if (parts.length === 1) {
+             urlPath = path.join(urlPath, 'index.html');
+        } else if (!hasExtension) {
+             urlPath = path.join(urlPath, 'index.html');
+        }
+
+        // Check again with normalized path
+        page = await getPage(urlPath);
     }
 
     if (urlPath.length > 72) {
-        return reply.code(414).send('URI Too Long'); // 414 URI Too Long
+        return reply.code(414).send('URI Too Long');
     }
 
     // Identify the domain key (first component)
@@ -218,126 +219,63 @@ fastify.get('/*', async (request, reply) => {
 
     // Check if we are generating this domain
     if (generationMap.has(key)) {
-        // Wait for it to finish
         await generationMap.get(key);
+        // Try to fetch again
+        page = await getPage(urlPath);
     }
 
-    // Check if file exists on disk
-    const fsPath = path.join(INTERNET_DIR, urlPath);
-
-    try {
-        await fs.access(fsPath);
-        // Exists, serve it
-        // We need to set content type manually since we are streaming raw or using sendFile
-        // but fastify-static is easier if we just used it.
-        // Let's use sendFile from fastify-static manually if possible, or just fs.createReadStream
-        // Note: we need to register fastify-static to use reply.sendFile
-
-        const contentType = mime.lookup(fsPath) || 'text/html';
-        const stream = createReadStream(fsPath);
-        return reply.type(contentType).send(stream);
-
-    } catch (err) {
-        if (err.code !== 'ENOENT' && err.code !== 'ENOTDIR') {
-            request.log.error(err);
-            return reply.code(500).send('Internal Server Error');
-        }
-        // File does not exist (or parent is file), Generate it!
+    if (page) {
+        const contentType = mime.lookup(urlPath) || 'text/html';
+        return reply.type(contentType).send(page.content);
     }
 
-    // Locking
+    // Generation Logic
     let resolveGeneration;
     const generationPromise = new Promise(resolve => {
         resolveGeneration = resolve;
     });
 
-    // Race condition check: check map again
+    // Double check lock
     if (generationMap.has(key)) {
          await generationMap.get(key);
-         // Recursively try again (it should exist now)
-         // But to avoid infinite loops/stack overflow, let's just redirect or re-run logic.
-         // Simpler: Just serve it now.
-         const contentType = mime.lookup(fsPath) || 'text/html';
-         try {
-             const stream = createReadStream(fsPath);
-             return reply.type(contentType).send(stream);
-         } catch(e) {
-             return reply.code(500).send('Generation failed or file not found after wait');
+         page = await getPage(urlPath);
+         if (page) {
+             const contentType = mime.lookup(urlPath) || 'text/html';
+             return reply.type(contentType).send(page.content);
          }
+         return reply.code(500).send('Generation failed or file not found after wait');
     }
 
     generationMap.set(key, generationPromise);
 
     try {
-        const fsDomain = path.join(INTERNET_DIR, key);
-        const parentFsPath = path.dirname(fsPath);
-
-        try {
-            await fs.mkdir(parentFsPath, { recursive: true });
-        } catch (e) {
-            // Handle collision where a file exists where we want a directory
-            if (e.code === 'EEXIST' || e.code === 'ENOTDIR') {
-                // Check if the domain itself is a file
-                try {
-                    const stat = await fs.stat(fsDomain);
-                    if (stat.isFile()) {
-                        // Migration: Move existing domain file to domain/index.html
-                        const tempPath = fsDomain + '.tmp';
-                        await fs.rename(fsDomain, tempPath);
-                        await fs.mkdir(fsDomain);
-                        await fs.rename(tempPath, path.join(fsDomain, 'index.html'));
-
-                        // Retry mkdir for the specific path we need
-                        await fs.mkdir(parentFsPath, { recursive: true });
-                    } else {
-                        throw e;
-                    }
-                } catch (inner) {
-                     // If still failing, throw original
-                     request.log.error(inner);
-                     throw e;
-                }
-            } else {
-                throw e;
-            }
-        }
-
-        // Fetch context assets
+        // Fetch context assets from DB
         let assets;
         try {
-           assets = await readAllFilesInDir(fsDomain);
+           assets = await readAllFilesInDir(key);
         } catch (e) {
-            // Likely domain dir doesn't exist yet, that's fine
             assets = { toString: () => "" };
         }
 
         const aiStream = await streamPage(urlPath, assets);
 
-        // Setup streaming response
         const contentType = mime.lookup(urlPath) || 'text/html';
         reply.type(contentType);
 
-        // We need to write to file AND response
-        const fileStream = createWriteStream(fsPath);
-
         const parser = new StreamingParser();
 
-        // Transform stream for response
         const responseStream = new Readable({
             read() {}
         });
 
         reply.send(responseStream);
 
-        // Process the AI stream (Node Fetch body is a ReadableStream (Web Standard) usually,
-        // but depending on version/impl it might be Node stream.
-        // `undici` (Fastify default) returns web stream usually?
-        // `response.body` in Node 18+ `fetch` is a Web ReadableStream.
+        // Accumulate content for DB
+        let fullContent = "";
+        let hasError = false;
 
         const reader = aiStream.getReader();
         const decoder = new TextDecoder();
-
-        // Buffer for NDJSON processing
         let buffer = "";
 
         function processChunk(chunk) {
@@ -347,26 +285,23 @@ fastify.get('/*', async (request, reply) => {
                 const line = buffer.slice(0, newlineIndex);
                 buffer = buffer.slice(newlineIndex + 1);
 
-                if (line.length < 6) continue; // "data: " check
+                if (line.length < 6) continue;
 
-                const jsonStr = line.slice(6); // remove "data: "
+                const jsonStr = line.slice(6);
                 if (jsonStr === "[DONE]") continue;
 
                 try {
                     const json = JSON.parse(jsonStr);
                     if (json.choices && json.choices[0] && json.choices[0].delta && json.choices[0].delta.content) {
                         const contentChunk = json.choices[0].delta.content;
-
-                        // Feed to parser (handles <_out> tags)
                         const output = parser.feed(contentChunk);
 
                         if (output) {
-                            fileStream.write(output);
+                            fullContent += output;
                             responseStream.push(output);
                         }
                     }
                 } catch (e) {
-                    // ignore parse errors (e.g. partial lines if logic wrong, but here we split by \n)
                 }
             }
         }
@@ -375,44 +310,43 @@ fastify.get('/*', async (request, reply) => {
             while (true) {
                 const { done, value } = await reader.read();
                 if (done) break;
-
                 const chunk = decoder.decode(value, { stream: true });
-                // The AI response is NDJSON (lines of JSON)
-                // We need to buffer lines to parse JSON?
-                // The Rust code parsed NDJSON.
-                // `while let Ok(Some(line)) = lines.next_line().await`
-
-                // Wait, `streamPage` returns `response.body`.
-                // The AI returns a stream of chunks.
-                // The Rust code treated it as NDJSON.
-                // We need to handle splitting by newline if chunks contain multiple lines or partial lines.
-
                 processChunk(chunk);
             }
         } catch (e) {
+            hasError = true;
             request.log.error(e);
         } finally {
-            responseStream.push(null); // End response
-            fileStream.end();
+            responseStream.push(null);
+
+            // Save to DB only if successful
+            if (!hasError && fullContent.length > 0) {
+                try {
+                    await savePage(urlPath, fullContent);
+                } catch (saveErr) {
+                    request.log.error({ err: saveErr, path: urlPath }, 'Failed to save generated page to DB');
+                }
+            }
         }
 
     } catch (err) {
         request.log.error(err);
         generationMap.delete(key);
-        resolveGeneration(); // Unlock
+        resolveGeneration();
         if (!reply.sent) {
             reply.code(500).send('Internal Server Error');
         }
         return;
     }
 
-    // Unlock
     generationMap.delete(key);
     resolveGeneration();
 });
 
 const start = async () => {
   try {
+    await setup(); // Init DB
+
     let host = process.env.HOST || '0.0.0.0';
     let port = 3000;
 
