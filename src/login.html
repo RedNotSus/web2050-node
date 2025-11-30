@@ -4,13 +4,59 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Login - web2050</title>
-  <link rel="stylesheet" href="/style.css">
+  
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+  <script src="https://unpkg.com/@phosphor-icons/web"></script>
+
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          },
+          colors: {
+            zinc: {
+              950: '#09090b',
+            }
+          },
+          backgroundImage: {
+            'grid-pattern': "linear-gradient(to right, #27272a 1px, transparent 1px), linear-gradient(to bottom, #27272a 1px, transparent 1px)",
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    .bg-grid {
+      background-size: 40px 40px;
+      mask-image: linear-gradient(to bottom, transparent, 5%, white, 95%, transparent);
+      -webkit-mask-image: linear-gradient(to bottom, transparent, 5%, white, 95%, transparent);
+    }
+  </style>
 </head>
-<body class="bg-gray-950 text-gray-100 min-h-screen flex items-center justify-center">
-  <div class="text-center">
-    <a href="/oauth/login" class="inline-block p-6 bg-gray-800 rounded-full hover:bg-gray-700 transition-colors border border-gray-700 hover:border-blue-500 group">
-      <img src="https://assets.hackclub.com/icon-rounded.svg" alt="Hack Club Login" class="w-8 h-8 group-hover:scale-80 transition-transform">
-    </a>
-  </div>
+<body class="bg-zinc-950 text-zinc-200 min-h-screen flex items-center justify-center relative overflow-hidden">
+
+  <div class="absolute inset-0 pointer-events-none opacity-[0.03] bg-grid-pattern bg-grid"></div>
+  
+  <div class="absolute inset-0 pointer-events-none bg-[radial-gradient(circle_at_center,rgba(59,130,246,0.04),transparent_40%)]"></div>
+
+  <a href="/oauth/login" class="relative z-10 group flex items-center gap-3 px-5 py-3 bg-zinc-900/40 backdrop-blur-sm border border-zinc-800 hover:border-zinc-600 rounded-lg transition-all duration-300 hover:bg-zinc-900/80 hover:shadow-[0_0_30px_-5px_rgba(59,130,246,0.15)] hover:scale-105 active:scale-95">
+    
+    <img src="https://assets.hackclub.com/icon-rounded.svg" alt="Hack Club" class="w-5 h-5 shadow-sm">
+    
+    <span class="font-mono text-sm text-zinc-300 group-hover:text-white transition-colors">
+      Continue with Hack Club
+    </span>
+  </a>
+
 </body>
 </html>
