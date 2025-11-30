@@ -5,12 +5,14 @@ import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { Readable } from 'stream';
 import fs from 'fs';
+import fastifyCookie from '@fastify/cookie';
 
 import { streamPage } from './ai.js';
 import { readAllFilesInDir } from './assets.js';
 import { StreamingParser } from './streaming_parser.js';
 import { searchFiles } from './search.js';
 import { setup, getPage, savePage, deletePage } from './db.js';
+import { getAuthUrl, exchangeCodeForToken } from './oauth.js';
 
 dotenv.config();
 
@@ -24,6 +26,13 @@ const fastify = Fastify({
   disableRequestLogging: true
 });
 
+// Register Cookie Plugin
+fastify.register(fastifyCookie, {
+  secret: process.env.COOKIE_SECRET || 'supersecret-cookie-secret-that-must-be-long',
+  hook: 'onRequest',
+  parseOptions: {}
+});
+
 // Middleware for CSP
 fastify.addHook('onRequest', async (request, reply) => {
   const csp = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src *; font-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none';";
@@ -32,6 +41,64 @@ fastify.addHook('onRequest', async (request, reply) => {
 
 // Generation Map: URL (string) -> Promise
 const generationMap = new Map();
+
+// --- Auth Routes ---
+
+fastify.get('/login', async (request, reply) => {
+    // If already logged in, redirect to home
+    if (request.cookies.token) {
+        return reply.redirect('/');
+    }
+    const loginPagePath = path.join(__dirname, 'login.html');
+    const content = await fs.promises.readFile(loginPagePath, 'utf-8');
+    reply.type('text/html').send(content);
+});
+
+fastify.get('/logout', async (request, reply) => {
+    reply.clearCookie('token', { path: '/' });
+    return reply.redirect('/');
+});
+
+fastify.get('/oauth/login', async (request, reply) => {
+    const authUrl = getAuthUrl();
+    return reply.redirect(authUrl);
+});
+
+fastify.get('/oauth/callback', async (request, reply) => {
+    const { code } = request.query;
+
+    if (!code) {
+        return reply.code(400).send('Missing authorization code');
+    }
+
+    try {
+        const tokenData = await exchangeCodeForToken(code);
+
+        // We get an access_token. We'll store it in a http-only cookie.
+        // You might want to store a session ID that maps to this token in DB,
+        // but for simplicity/statelessness, we can store the token itself if it's not too huge.
+        // Hack Club tokens are opaque strings, usually fine.
+
+        // Security Note: In a real app, encrypt this token or use a session store.
+        // For this task, we assume the token is the session identifier.
+
+        reply.setCookie('token', tokenData.access_token, {
+            path: '/',
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production', // true if https
+            sameSite: 'lax',
+            maxAge: 60 * 60 * 24 * 7 // 1 week
+        });
+
+        // Redirect to where they came from? Defaults to home for now.
+        return reply.redirect('/');
+
+    } catch (err) {
+        request.log.error(err);
+        return reply.code(500).send('Authentication failed');
+    }
+});
+
 
 // Reset Endpoint
 fastify.post('/reset', async (request, reply) => {
@@ -88,6 +155,12 @@ fastify.get('/', async (request, reply) => {
       <h1 class="text-4xl font-bold text-blue-500">web2050 Index</h1>
       <p class="text-gray-400 mt-2">Append any URL minus the protocol (https://) to the end of this URL and watch AI generate it in real time.</p>
       <p class="text-gray-400 mt-2">Search the index of all AI-generated pages sorted descending by creation. <span id="counter">${results.length}</span> pages have been generated so far.</p>
+      <div class="mt-4">
+        ${request.cookies.token ?
+          '<a href="/logout" class="text-sm text-red-400 hover:text-red-300">Logout</a>' :
+          '<a href="/login" class="text-sm text-blue-400 hover:text-blue-300">Login to Generate</a>'
+        }
+      </div>
     </header>
     <section class="mb-6 w-full flex space-x-2">
       <form method="get" class="flex w-full">
@@ -244,6 +317,16 @@ fastify.get('/*', async (request, reply) => {
     if (page) {
         const contentType = mime.lookup(urlPath) || 'text/html';
         return reply.type(contentType).send(page.content);
+    }
+
+    // --- Authentication Check ---
+    // If we reached here, it means:
+    // 1. It's not a static file.
+    // 2. It's not an existing page in DB.
+    // 3. We are about to start generation.
+    // REQUIRE LOGIN.
+    if (!request.cookies.token) {
+        return reply.redirect('/login');
     }
 
     // Generation Logic
