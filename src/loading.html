@@ -139,6 +139,9 @@
                             iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
                             iframeDoc.open();
 
+                            // Inject base target to ensure links break out of the iframe
+                            iframeDoc.write('<base target="_top">');
+
                             // Write the initial chunk (after <_out>)
                             let initialCode = buffer.substring(tagIndex + OUT_TAG.length);
 
