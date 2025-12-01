@@ -2,7 +2,7 @@
 
 > The AI-Generated web.
 
-Append any URL to the base URL (after `/`, minus the protocol) and it will live-stream generate that specific page! Subsequently, your browser uses it to recursively generate the rest of the site, including all assets, pages, and JS! Uses [https://ai.hackclub.com](https://ai.hackclub.com) internally.
+Append any URL to the base URL (after `/`, minus the protocol) and it will live-stream generate that specific page! Subsequently, your browser uses it to recursively generate the rest of the site, including all assets, pages, and JS! Uses [https://ai.hackclub.com](https://ai.hackclub.com) internally. all credits to elijah629/web2050 he did basically all of it
 
 ## Why?
 
