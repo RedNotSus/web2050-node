@@ -436,13 +436,30 @@ fastify.get('/*', async (request, reply) => {
         return reply.redirect(`/login?redirect=${redirectUrl}`);
     }
 
-    // Generation Logic
+    // Check if client requested a stream (Shell logic)
+    const isStreamRequest = request.query.stream === 'true';
+
+    // If valid user but page not generated yet, and this IS NOT a stream request,
+    // Serve the "Loading Shell" which will then request ?stream=true
+    if (!isStreamRequest) {
+        try {
+            const loadingPath = path.join(__dirname, 'loading.html');
+            const content = await fs.promises.readFile(loadingPath, 'utf-8');
+            return reply.type('text/html').send(content);
+        } catch (e) {
+            request.log.error(e, "Failed to load loading.html");
+            return reply.code(500).send("Loading Error");
+        }
+    }
+
+    // --- Generation Logic (Only for ?stream=true) ---
     let resolveGeneration;
     const generationPromise = new Promise(resolve => {
         resolveGeneration = resolve;
     });
 
     if (generationMap.has(key)) {
+         // If already generating, wait for it.
          await generationMap.get(key);
          page = await getPage(urlPath);
          if (page) {
@@ -493,11 +510,14 @@ fastify.get('/*', async (request, reply) => {
                     const json = JSON.parse(jsonStr);
                     if (json.choices && json.choices[0] && json.choices[0].delta && json.choices[0].delta.content) {
                         const contentChunk = json.choices[0].delta.content;
-                        const output = parser.feed(contentChunk);
 
+                        // Push RAW content to the client (shell needs thoughts + code)
+                        responseStream.push(contentChunk);
+
+                        // Feed parser to extract ONLY the clean file content for DB
+                        const output = parser.feed(contentChunk);
                         if (output) {
                             fullContent += output;
-                            responseStream.push(output);
                         }
                     }
                 } catch (e) {}

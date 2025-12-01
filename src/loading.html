@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Generating...</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    },
+                    colors: {
+                        zinc: {
+                            850: '#1f1f22',
+                            950: '#09090b',
+                        },
+                        orange: {
+                            500: '#f97316',
+                        }
+                    },
+                    animation: {
+                        'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { background-color: #09090b; color: #e4e4e7; }
+        .cursor-blink { animation: blink 1s step-end infinite; }
+        @keyframes blink { 50% { opacity: 0; } }
+        /* Markdown-like styling for thoughts */
+        .thought-content p { margin-bottom: 0.5rem; }
+        .thought-content ul { list-style-type: disc; padding-left: 1.5rem; margin-bottom: 0.5rem; }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center justify-center p-4 antialiased selection:bg-orange-500/20 selection:text-orange-200">
+
+    <div class="w-full max-w-2xl space-y-8">
+
+        <!-- Header / Status -->
+        <div class="flex items-center space-x-4 border-b border-zinc-800 pb-6">
+            <div class="relative flex h-3 w-3">
+              <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-500 opacity-75"></span>
+              <span class="relative inline-flex rounded-full h-3 w-3 bg-orange-500"></span>
+            </div>
+            <h1 class="text-xl font-medium text-white tracking-tight">
+                Generating <span class="text-zinc-500 font-mono text-sm ml-2" id="path-display">...</span>
+            </h1>
+        </div>
+
+        <!-- Thoughts Area -->
+        <div class="space-y-4">
+            <div class="flex items-center justify-between text-xs text-zinc-500 font-mono uppercase tracking-wider">
+                <span>Reasoning Stream</span>
+                <span id="timer">0.0s</span>
+            </div>
+
+            <div class="bg-zinc-900/50 border border-zinc-800 rounded-lg p-6 min-h-[300px] max-h-[60vh] overflow-y-auto font-mono text-sm leading-relaxed shadow-inner custom-scrollbar" id="thoughts-container">
+                <div id="thoughts-content" class="text-zinc-400 thought-content whitespace-pre-wrap"></div>
+                <span class="inline-block w-2 h-4 bg-orange-500 align-middle ml-1 cursor-blink"></span>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="text-center">
+            <p class="text-zinc-600 text-xs">
+                Moby is thinking...
+            </p>
+        </div>
+
+    </div>
+
+    <script>
+        document.getElementById('path-display').textContent = window.location.pathname;
+
+        const startTime = Date.now();
+        const timerEl = document.getElementById('timer');
+        setInterval(() => {
+            const diff = ((Date.now() - startTime) / 1000).toFixed(1);
+            timerEl.textContent = diff + 's';
+        }, 100);
+
+        async function startStream() {
+            const thoughtsContent = document.getElementById('thoughts-content');
+            const thoughtsContainer = document.getElementById('thoughts-container');
+            const OUT_TAG = "<_out>";
+
+            try {
+                const response = await fetch(window.location.href + '?stream=true');
+                if (!response.ok) throw new Error('Network response was not ok');
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = "";
+                let foundOutTag = false;
+                let codeContent = "";
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    const chunk = decoder.decode(value, { stream: true });
+
+                    if (!foundOutTag) {
+                        buffer += chunk;
+                        const tagIndex = buffer.indexOf(OUT_TAG);
+
+                        if (tagIndex !== -1) {
+                            foundOutTag = true;
+                            // Update thoughts with everything before the tag
+                            const thoughts = buffer.substring(0, tagIndex);
+                            thoughtsContent.textContent = thoughts;
+                            thoughtsContainer.scrollTop = thoughtsContainer.scrollHeight;
+
+                            // Start accumulating code
+                            codeContent += buffer.substring(tagIndex + OUT_TAG.length);
+
+                            // Visual indication that we are switching (optional)
+                            document.title = "Rendering...";
+                        } else {
+                            // Still thinking
+                            thoughtsContent.textContent = buffer;
+                            thoughtsContainer.scrollTop = thoughtsContainer.scrollHeight;
+                        }
+                    } else {
+                        // We are in code mode
+                        codeContent += chunk;
+                    }
+                }
+
+                // Stream finished.
+                // Clean up the code content: remove closing tag if present
+                const closeTagIndex = codeContent.indexOf('</_out>');
+                if (closeTagIndex !== -1) {
+                    codeContent = codeContent.substring(0, closeTagIndex);
+                }
+
+                // Replace document content
+                if (codeContent.trim().length > 0) {
+                    // Check if it looks like HTML
+                    if (codeContent.trim().toLowerCase().startsWith("<!doctype html") || codeContent.trim().toLowerCase().startsWith("<html")) {
+                        document.open();
+                        document.write(codeContent);
+                        document.close();
+                    } else {
+                        // Maybe it's an SVG or text file, just display it appropriately
+                         document.body.innerHTML = `<pre style="color:white; padding: 20px;">${codeContent.replace(/</g, '&lt;')}</pre>`;
+                    }
+                } else {
+                     // Fallback if no code found (maybe pure thought response?)
+                     // Or maybe the response was just the final HTML directly (from cache)
+                     // If buffer starts with <!DOCTYPE or <html, it was likely cached.
+                     if (buffer.trim().toLowerCase().startsWith("<!doctype html") || buffer.trim().toLowerCase().startsWith("<html")) {
+                        document.open();
+                        document.write(buffer);
+                        document.close();
+                     } else {
+                        thoughtsContent.textContent += "\n\n[Finished without generating code]";
+                     }
+                }
+
+            } catch (err) {
+                console.error(err);
+                document.getElementById('thoughts-content').textContent += "\n\n[Error: " + err.message + "]";
+            }
+        }
+
+        startStream();
+    </script>
+</body>
+</html>
