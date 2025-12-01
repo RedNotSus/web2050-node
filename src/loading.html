@@ -87,6 +87,46 @@
             timerEl.textContent = diff + 's';
         }, 100);
 
+        const fakeThoughts = [
+            "Analyzing project requirements...",
+            "Sketching initial wireframes...",
+            "Determining color palette and typography...",
+            "Structuring semantic HTML...",
+            "Drafting Tailwind CSS utility classes...",
+            "Refining layout responsiveness...",
+            "Optimizing accessibility features...",
+            "Finalizing code structure...",
+            "Reviewing design consistency..."
+        ];
+
+        let isGenerating = true;
+
+        async function runFakeReasoning() {
+            const thoughtsContent = document.getElementById('thoughts-content');
+            const thoughtsContainer = document.getElementById('thoughts-container');
+
+            for (const thought of fakeThoughts) {
+                if (!isGenerating) break;
+
+                // Add a newline if it's not the first line
+                if (thoughtsContent.textContent.length > 0) {
+                    thoughtsContent.textContent += "\n";
+                }
+
+                // Type out the thought character by character
+                for (let i = 0; i < thought.length; i++) {
+                    if (!isGenerating) break;
+                    thoughtsContent.textContent += thought[i];
+                    thoughtsContainer.scrollTop = thoughtsContainer.scrollHeight;
+                    // Random delay between 10ms and 50ms for realistic typing
+                    await new Promise(r => setTimeout(r, Math.random() * 40 + 10));
+                }
+
+                // Pause after finishing a thought
+                await new Promise(r => setTimeout(r, 600));
+            }
+        }
+
         async function startStream() {
             const thoughtsContent = document.getElementById('thoughts-content');
             const thoughtsContainer = document.getElementById('thoughts-container');
@@ -94,6 +134,9 @@
 
             let iframe = null;
             let iframeDoc = null;
+
+            // Start the fake reasoning stream
+            runFakeReasoning();
 
             try {
                 const response = await fetch(window.location.href + '?stream=true');
@@ -116,10 +159,7 @@
 
                         if (tagIndex !== -1) {
                             foundOutTag = true;
-                            // Update thoughts with everything before the tag
-                            const thoughts = buffer.substring(0, tagIndex);
-                            thoughtsContent.textContent = thoughts;
-                            thoughtsContainer.scrollTop = thoughtsContainer.scrollHeight;
+                            isGenerating = false; // Stop the fake stream
 
                             // Switch to Iframe Mode
                             document.title = "Rendering...";
@@ -155,8 +195,8 @@
                             buffer = ""; // Clear buffer
                         } else {
                             // Still thinking
-                            thoughtsContent.textContent = buffer;
-                            thoughtsContainer.scrollTop = thoughtsContainer.scrollHeight;
+                            // We ignore the real stream content for the UI here
+                            // because we are showing the fake reasoning instead.
                         }
                     } else {
                         // We are in code mode, stream directly to iframe
@@ -176,7 +216,7 @@
                         document.write(buffer);
                         document.close();
                      } else {
-                        thoughtsContent.textContent += "\n\n[Finished without generating code]";
+                        // thoughtsContent.textContent += "\n\n[Finished without generating code]";
                      }
                 }
 
@@ -187,7 +227,7 @@
                      // Or maybe just log it.
                      iframeDoc.write("<br><br><div style='color:red; font-family:sans-serif;'>Connection Error: " + err.message + "</div>");
                 } else {
-                    document.getElementById('thoughts-content').textContent += "\n\n[Error: " + err.message + "]";
+                    // document.getElementById('thoughts-content').textContent += "\n\n[Error: " + err.message + "]";
                 }
             }
         }
