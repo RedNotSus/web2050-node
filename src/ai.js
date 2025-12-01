@@ -148,7 +148,7 @@ export async function streamPage(urlPath, assets) {
       { role: "user", content: userPrompt }
     ],
     stream: true,
-    include_reasoning: false
+    include_reasoning: true
   };
 
   const response = await fetch(COMPLETIONS_URL, {
