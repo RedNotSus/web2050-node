@@ -92,6 +92,9 @@
             const thoughtsContainer = document.getElementById('thoughts-container');
             const OUT_TAG = "<_out>";
 
+            let iframe = null;
+            let iframeDoc = null;
+
             try {
                 const response = await fetch(window.location.href + '?stream=true');
                 if (!response.ok) throw new Error('Network response was not ok');
@@ -100,7 +103,6 @@
                 const decoder = new TextDecoder();
                 let buffer = "";
                 let foundOutTag = false;
-                let codeContent = "";
 
                 while (true) {
                     const { done, value } = await reader.read();
@@ -119,44 +121,53 @@
                             thoughtsContent.textContent = thoughts;
                             thoughtsContainer.scrollTop = thoughtsContainer.scrollHeight;
 
-                            // Start accumulating code
-                            codeContent += buffer.substring(tagIndex + OUT_TAG.length);
-
-                            // Visual indication that we are switching (optional)
+                            // Switch to Iframe Mode
                             document.title = "Rendering...";
+
+                            iframe = document.createElement('iframe');
+                            iframe.style.position = 'fixed';
+                            iframe.style.top = '0';
+                            iframe.style.left = '0';
+                            iframe.style.width = '100%';
+                            iframe.style.height = '100%';
+                            iframe.style.border = 'none';
+                            iframe.style.zIndex = '9999';
+                            iframe.style.backgroundColor = 'white'; // Default background while loading
+
+                            document.body.appendChild(iframe);
+
+                            iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+                            iframeDoc.open();
+
+                            // Write the initial chunk (after <_out>)
+                            let initialCode = buffer.substring(tagIndex + OUT_TAG.length);
+
+                            // Simple filter for </_out> if it appears this early (unlikely but possible)
+                            // We won't be too aggressive with filtering during stream to avoid breaking split tags,
+                            // but we can try basic replacement.
+                            initialCode = initialCode.replace(/<\/_out>/g, '');
+
+                            iframeDoc.write(initialCode);
+
+                            buffer = ""; // Clear buffer
                         } else {
                             // Still thinking
                             thoughtsContent.textContent = buffer;
                             thoughtsContainer.scrollTop = thoughtsContainer.scrollHeight;
                         }
                     } else {
-                        // We are in code mode
-                        codeContent += chunk;
+                        // We are in code mode, stream directly to iframe
+                        // Basic filtering of closing tag
+                        const cleanChunk = chunk.replace(/<\/_out>/g, '');
+                        iframeDoc.write(cleanChunk);
                     }
                 }
 
-                // Stream finished.
-                // Clean up the code content: remove closing tag if present
-                const closeTagIndex = codeContent.indexOf('</_out>');
-                if (closeTagIndex !== -1) {
-                    codeContent = codeContent.substring(0, closeTagIndex);
-                }
-
-                // Replace document content
-                if (codeContent.trim().length > 0) {
-                    // Check if it looks like HTML
-                    if (codeContent.trim().toLowerCase().startsWith("<!doctype html") || codeContent.trim().toLowerCase().startsWith("<html")) {
-                        document.open();
-                        document.write(codeContent);
-                        document.close();
-                    } else {
-                        // Maybe it's an SVG or text file, just display it appropriately
-                         document.body.innerHTML = `<pre style="color:white; padding: 20px;">${codeContent.replace(/</g, '&lt;')}</pre>`;
-                    }
+                if (iframeDoc) {
+                    iframeDoc.close();
                 } else {
                      // Fallback if no code found (maybe pure thought response?)
-                     // Or maybe the response was just the final HTML directly (from cache)
-                     // If buffer starts with <!DOCTYPE or <html, it was likely cached.
+                     // If buffer starts with <!DOCTYPE or <html, it was likely cached/pre-generated.
                      if (buffer.trim().toLowerCase().startsWith("<!doctype html") || buffer.trim().toLowerCase().startsWith("<html")) {
                         document.open();
                         document.write(buffer);
@@ -168,7 +179,13 @@
 
             } catch (err) {
                 console.error(err);
-                document.getElementById('thoughts-content').textContent += "\n\n[Error: " + err.message + "]";
+                if (iframeDoc) {
+                     // If we are already in iframe mode, write error there?
+                     // Or maybe just log it.
+                     iframeDoc.write("<br><br><div style='color:red; font-family:sans-serif;'>Connection Error: " + err.message + "</div>");
+                } else {
+                    document.getElementById('thoughts-content').textContent += "\n\n[Error: " + err.message + "]";
+                }
             }
         }
 
