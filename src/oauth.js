@@ -10,7 +10,7 @@ const AUTHORIZATION_URL = 'https://account.hackclub.com/oauth/authorize';
 const TOKEN_URL = 'https://account.hackclub.com/oauth/token';
 const USER_INFO_URL = 'https://account.hackclub.com/api/v1/me';
 
-export function getAuthUrl() {
+export function getAuthUrl(state) {
   if (!CLIENT_ID || !REDIRECT_URI) {
     throw new Error("Missing OAuth configuration (CLIENT_ID or REDIRECT_URI)");
   }
@@ -20,6 +20,11 @@ export function getAuthUrl() {
     response_type: 'code',
     scope: 'email' // User requested basic scope, 'email' is in the provided list
   });
+
+  if (state) {
+    params.append('state', state);
+  }
+
   return `${AUTHORIZATION_URL}?${params.toString()}`;
 }
 

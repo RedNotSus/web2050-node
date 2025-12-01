@@ -64,12 +64,13 @@ fastify.get('/logout', async (request, reply) => {
 });
 
 fastify.get('/oauth/login', async (request, reply) => {
-    const authUrl = getAuthUrl();
+    const { redirect } = request.query;
+    const authUrl = getAuthUrl(redirect);
     return reply.redirect(authUrl);
 });
 
 fastify.get('/oauth/callback', async (request, reply) => {
-    const { code } = request.query;
+    const { code, state } = request.query;
 
     if (!code) {
         return reply.code(400).send('Missing authorization code');
@@ -84,6 +85,10 @@ fastify.get('/oauth/callback', async (request, reply) => {
             sameSite: 'lax',
             maxAge: 60 * 60 * 24 * 7 // 1 week
         });
+
+        if (state && state.startsWith('/') && !state.startsWith('//')) {
+            return reply.redirect(state);
+        }
         return reply.redirect('/');
 
     } catch (err) {
@@ -427,7 +432,8 @@ fastify.get('/*', async (request, reply) => {
 
     // --- Authentication Check ---
     if (!request.cookies.token) {
-        return reply.redirect('/login');
+        const redirectUrl = encodeURIComponent(request.url);
+        return reply.redirect(`/login?redirect=${redirectUrl}`);
     }
 
     // Generation Logic
