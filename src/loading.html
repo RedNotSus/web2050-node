@@ -87,46 +87,6 @@
             timerEl.textContent = diff + 's';
         }, 100);
 
-        const fakeThoughts = [
-            "Parsing user intent and extracting key design constraints...",
-            "Consulting knowledge base for optimal semantic HTML5 structure...",
-            "Generating responsive layout grid using Tailwind CSS utility classes...",
-            "Selecting a high-contrast color palette for accessibility compliance...",
-            "Injecting interactive JavaScript logic for dynamic user experience...",
-            "Refining typography hierarchy to enhance readability...",
-            "Optimizing DOM structure for performance and SEO...",
-            "Synthesizing final code components and verifying syntax...",
-            "Polishing visual details and ensuring cross-browser compatibility..."
-        ];
-
-        let isGenerating = true;
-
-        async function runFakeReasoning() {
-            const thoughtsContent = document.getElementById('thoughts-content');
-            const thoughtsContainer = document.getElementById('thoughts-container');
-
-            for (const thought of fakeThoughts) {
-                if (!isGenerating) break;
-
-                // Add a newline if it's not the first line
-                if (thoughtsContent.textContent.length > 0) {
-                    thoughtsContent.textContent += "\n";
-                }
-
-                // Type out the thought character by character
-                for (let i = 0; i < thought.length; i++) {
-                    if (!isGenerating) break;
-                    thoughtsContent.textContent += thought[i];
-                    thoughtsContainer.scrollTop = thoughtsContainer.scrollHeight;
-                    // Random delay between 10ms and 50ms for realistic typing
-                    await new Promise(r => setTimeout(r, Math.random() * 40 + 10));
-                }
-
-                // Pause after finishing a thought
-                await new Promise(r => setTimeout(r, 600));
-            }
-        }
-
         async function startStream() {
             const thoughtsContent = document.getElementById('thoughts-content');
             const thoughtsContainer = document.getElementById('thoughts-container');
@@ -134,9 +94,6 @@
 
             let iframe = null;
             let iframeDoc = null;
-
-            // Start the fake reasoning stream
-            runFakeReasoning();
 
             try {
                 const response = await fetch(window.location.href + '?stream=true');
@@ -159,7 +116,10 @@
 
                         if (tagIndex !== -1) {
                             foundOutTag = true;
-                            isGenerating = false; // Stop the fake stream
+                            // Update thoughts with everything before the tag
+                            const thoughts = buffer.substring(0, tagIndex);
+                            thoughtsContent.textContent = thoughts;
+                            thoughtsContainer.scrollTop = thoughtsContainer.scrollHeight;
 
                             // Switch to Iframe Mode
                             document.title = "Rendering...";
@@ -195,8 +155,8 @@
                             buffer = ""; // Clear buffer
                         } else {
                             // Still thinking
-                            // We ignore the real stream content for the UI here
-                            // because we are showing the fake reasoning instead.
+                            thoughtsContent.textContent = buffer;
+                            thoughtsContainer.scrollTop = thoughtsContainer.scrollHeight;
                         }
                     } else {
                         // We are in code mode, stream directly to iframe
@@ -216,7 +176,7 @@
                         document.write(buffer);
                         document.close();
                      } else {
-                        // thoughtsContent.textContent += "\n\n[Finished without generating code]";
+                        thoughtsContent.textContent += "\n\n[Finished without generating code]";
                      }
                 }
 
@@ -227,7 +187,7 @@
                      // Or maybe just log it.
                      iframeDoc.write("<br><br><div style='color:red; font-family:sans-serif;'>Connection Error: " + err.message + "</div>");
                 } else {
-                    // document.getElementById('thoughts-content').textContent += "\n\n[Error: " + err.message + "]";
+                    document.getElementById('thoughts-content').textContent += "\n\n[Error: " + err.message + "]";
                 }
             }
         }
