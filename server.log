@@ -1,0 +1,10 @@
+
+> app@1.0.0 start
+> node src/index.js
+
+[dotenv@17.2.3] injecting env (0) from .env -- tip: 🔑 add access controls to secrets: https://dotenvx.com/ops
+[dotenv@17.2.3] injecting env (0) from .env -- tip: 👥 sync secrets across teammates & machines: https://dotenvx.com/ops
+DATABASE_URL not set. Using in-memory database (pg-mem). Data will be lost on restart.
+{"level":30,"time":1764548919464,"pid":3414,"hostname":"devbox","msg":"Server listening at http://127.0.0.1:8000"}
+Server listening on 0.0.0.0:8000
+{"level":30,"time":1764548919465,"pid":3414,"hostname":"devbox","msg":"Server listening at http://192.168.0.2:8000"}
